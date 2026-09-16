@@ -135,6 +135,11 @@
           "group": "navigation"
         },
         {
+          "command": "goalModel.editProperty",
+          "when": "viewItem == attribute",
+          "group": "navigation"
+        },
+        {
           "command": "goalModel.deleteProperty",
           "when": "viewItem == attribute",
           "group": "navigation"

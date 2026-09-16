@@ -2,15 +2,26 @@
   "compilerOptions": {
     "module": "commonjs",
     "target": "es2024",
-    "lib": ["es2024"],
+    "lib": [
+      "es2024"
+    ],
     "outDir": "out",
     "rootDir": "src",
     "sourceMap": true,
     "composite": true,
-    "types": ["node"]
+    "types": [
+      "node"
+    ],
+    "skipLibCheck": true
   },
-  "include": ["src"],
-  "references": [{ "path": "./src/lsp/lsp-mutrose" }],
+  "include": [
+    "src"
+  ],
+  "references": [
+    {
+      "path": "./src/lsp/lsp-mutrose"
+    }
+  ],
   "exclude": [
     "src/lsp/lsp-mutrose",
     "src/editors",

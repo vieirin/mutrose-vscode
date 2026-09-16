@@ -10,11 +10,17 @@ import {
   GoalModelProvider,
   Mission,
   Node,
+  NodeAttr,
   NodeRefinement,
   Refinement,
 } from "./goalModel";
 import { PistarEditorProvider } from "./pistarEditor";
 import { getAllProperties } from "./utilities/getAllProperties";
+import {
+  pickNodeFromQuickPick,
+  promptAndSetPropertyValue,
+  runEditNodeLoop,
+} from "./utilities/nodePropertyEditor";
 import { cwd } from "process";
 import { CustomEditorProvider } from "./customEditor";
 import {
@@ -77,7 +83,7 @@ export function activate(context: vscode.ExtensionContext) {
 
   const rootPath =
     vscode.workspace.workspaceFolders &&
-    vscode.workspace.workspaceFolders.length > 0
+      vscode.workspace.workspaceFolders.length > 0
       ? vscode.workspace.workspaceFolders[0].uri.fsPath
       : undefined;
 
@@ -310,76 +316,13 @@ export function activate(context: vscode.ExtensionContext) {
   commands.push(
     vscode.commands.registerCommand(
       "goalModel.editNode",
-      async (element: Node) => {
-        let confirmed = false;
-        while (!confirmed) {
-          const properties = getAllProperties().map((prop) => {
-            const attr = element.attributes.find(
-              (el) => el.attrName == prop.name,
-            );
-            return {
-              label: prop.name,
-              description: attr ? attr.attrValue : "",
-            };
-          });
-          element.attributes.forEach((el) => {
-            if (!properties.find((att) => att.label == el.attrName)) {
-              properties.push({
-                label: el.attrName,
-                description: el.attrValue,
-              });
-            }
-          });
-          properties.push({ label: "Custom Property", description: "Custom" });
-          properties.push({ label: "Confirm Edition", description: "" });
-          const propertiesSet = new Set(properties);
-          try {
-            console.dir(propertiesSet, { depth: -1 });
-            const selected = await vscode.window.showQuickPick([
-              ...propertiesSet,
-            ]);
-            if (selected == undefined) break;
-            if (selected.label == "Custom Property") {
-              const propertyName = await vscode.window.showInputBox({
-                placeHolder: "Type the custom property name",
-                prompt: "Edit node content",
-                value: "",
-              });
-              if (propertyName == undefined) continue;
-              selected.label = propertyName;
-            } else if (selected.label == "Confirm Edition") {
-              confirmed = true;
-              break;
-            }
-            const attr = element.attributes.find(
-              (el) => el.attrName == selected.label,
-            );
-            const selectedProperty = getAllProperties().find(
-              (el) => el.name == selected.label,
-            );
-            let input: string | undefined;
-            if (selectedProperty?.options?.length) {
-              const options: vscode.QuickPickItem[] =
-                selectedProperty.options.map((el) => {
-                  return { label: el, description: "" };
-                });
-              input = (await vscode.window.showQuickPick(options))!.label;
-              if (input == undefined) break;
-            } else {
-              input = await vscode.window.showInputBox({
-                placeHolder: "Type " + selected.label,
-                prompt: "Edit node content",
-                value: attr ? attr.attrValue : "",
-              });
-              if (input == undefined) break;
-            }
-            element.removeAttribute(selected.label);
-            element.addAttribute(selected.label, input);
-          } catch (e) {
-            console.log(e, "erro ao editar node");
-          }
+      async (element?: Node) => {
+        let node = element;
+        if (!node) {
+          node = await pickNodeFromQuickPick(gmProvider);
+          if (!node) return;
         }
-        element.parent.parent.saveGoalModel();
+        await runEditNodeLoop(node);
       },
     ),
   );
@@ -388,33 +331,13 @@ export function activate(context: vscode.ExtensionContext) {
   commands.push(
     vscode.commands.registerCommand(
       "goalModel.addProperty",
-      async (element) => {
-        let items: vscode.QuickPickItem[];
-        switch (element.nodeType) {
-          case "Goal":
-            items = [
-              {
-                label: "teste",
-                description: "goal",
-              },
-            ];
-            break;
-          case "Task":
-            items = [
-              {
-                label: "teste",
-                description: "task",
-              },
-            ];
-            break;
+      async (element?: Node) => {
+        let node = element;
+        if (!node) {
+          node = await pickNodeFromQuickPick(gmProvider);
+          if (!node) return;
         }
-        try {
-          const selected = await vscode.window.showQuickPick(items!);
-          element.addAttribute(selected!.label, "");
-          element.parent.parent.saveGoalModel();
-        } catch (e) {
-          console.log(e, "erro ao adicionar property");
-        }
+        await runEditNodeLoop(node);
       },
     ),
   );
@@ -422,15 +345,23 @@ export function activate(context: vscode.ExtensionContext) {
   commands.push(
     vscode.commands.registerCommand(
       "goalModel.editProperty",
-      async (element) => {
-        // TODO: add logic to different types of attributes
-        const newContent = await vscode.window.showInputBox({
-          placeHolder: "Type new content",
-          prompt: "Edit property content",
-          value: element.attrValue,
-        });
-        element.attrValue = newContent;
-        element.parent.parent.parent.saveGoalModel();
+      async (element?: NodeAttr | Node) => {
+        let node: Node | undefined;
+        let attr: NodeAttr | undefined;
+        if (element instanceof NodeAttr) {
+          attr = element;
+          node = element.parent;
+        } else if (element instanceof Node) {
+          node = element;
+        } else {
+          node = await pickNodeFromQuickPick(gmProvider);
+          if (!node) return;
+        }
+        if (attr) {
+          await promptAndSetPropertyValue(node, attr.attrName, attr.attrValue);
+        } else {
+          await runEditNodeLoop(node);
+        }
       },
     ),
   );

@@ -16,7 +16,7 @@ export class CustomEditorProvider implements vscode.CustomTextEditorProvider {
     );
   }
 
-  constructor(private readonly context: vscode.ExtensionContext) {}
+  constructor(private readonly context: vscode.ExtensionContext) { }
 
   // Chamado pelo VS Code ao abrir um arquivo associado
   public async resolveCustomTextEditor(
@@ -49,21 +49,70 @@ export class CustomEditorProvider implements vscode.CustomTextEditorProvider {
       });
     };
 
+    // Utilitário para enviar diagnósticos atuais do LSP ao React
+    const sendDiagnosticsToWebview = () => {
+      const rawDiagnostics = vscode.languages.getDiagnostics(document.uri);
+      const nodeRanges = getNodeLineRanges(document.getText());
+
+      const diagnostics = rawDiagnostics.map((d) => {
+        let nodeId = (d as any).data?.nodeId;
+        if (!nodeId) {
+          nodeId = findNodeIdAtLine(nodeRanges, d.range.start.line);
+        }
+        return {
+          message: d.message,
+          severity:
+            d.severity === vscode.DiagnosticSeverity.Error
+              ? "error"
+              : d.severity === vscode.DiagnosticSeverity.Warning
+                ? "warning"
+                : "info",
+          range: {
+            start: {
+              line: d.range.start.line,
+              character: d.range.start.character,
+            },
+            end: {
+              line: d.range.end.line,
+              character: d.range.end.character,
+            },
+          },
+          source: d.source,
+          nodeId,
+        };
+      });
+
+      webviewPanel.webview.postMessage({
+        command: "diagnostics",
+        diagnostics,
+      });
+    };
+
     // Quando o VS Code recarregar o documento (ex: arquivo alterado externamente)
     const changeDocSubscription = vscode.workspace.onDidChangeTextDocument(
       (e) => {
         if (e.document.uri.toString() === document.uri.toString()) {
           if (isUpdatingFromWebview) return;
           sendDocumentToWebview();
+          sendDiagnosticsToWebview();
         }
       },
     );
 
+    // Quando os diagnósticos do documento forem atualizados pelo LSP
+    const changeDiagnosticsSubscription =
+      vscode.languages.onDidChangeDiagnostics((e) => {
+        if (e.uris.some((u) => u.toString() === document.uri.toString())) {
+          sendDiagnosticsToWebview();
+        }
+      });
+
     webviewPanel.onDidDispose(() => {
       changeDocSubscription.dispose();
+      changeDiagnosticsSubscription.dispose();
     });
 
-    // Receber edições vindas do React
+    // Receber mensagens vindas do React
     webviewPanel.webview.onDidReceiveMessage(async (message) => {
       switch (message.command) {
         case "edit":
@@ -73,11 +122,10 @@ export class CustomEditorProvider implements vscode.CustomTextEditorProvider {
           break;
         case "ready":
           sendDocumentToWebview();
+          sendDiagnosticsToWebview();
           break;
       }
     });
-
-    // Enviar conteúdo inicial assim que a webview estiver pronta
   }
 
   // Aplica edição via WorkspaceEdit — isso ativa undo/redo e dirty state automaticamente
@@ -161,4 +209,55 @@ function getNonce() {
   for (let i = 0; i < 32; i++)
     text += chars.charAt(Math.floor(Math.random() * chars.length));
   return text;
+}
+
+export function getNodeLineRanges(
+  text: string,
+): Array<{ id: string; startLine: number; endLine: number }> {
+  const lines = text.split(/\r?\n/);
+  const nodeRanges: Array<{ id: string; startLine: number; endLine: number }> = [];
+
+  const idRegex = /"id"\s*:\s*"([^"]+)"/g;
+  let match: RegExpExecArray | null;
+  while ((match = idRegex.exec(text)) !== null) {
+    const id = match[1];
+    const index = match.index;
+    const startLine = text.substring(0, index).split(/\r?\n/).length - 1;
+
+    let openBraceLine = startLine;
+    while (openBraceLine >= 0 && !lines[openBraceLine].includes("{")) {
+      openBraceLine--;
+    }
+    if (openBraceLine < 0) openBraceLine = startLine;
+
+    let depth = 0;
+    let endLine = openBraceLine;
+    for (let i = openBraceLine; i < lines.length; i++) {
+      for (const char of lines[i]) {
+        if (char === "{") depth++;
+        else if (char === "}") depth--;
+      }
+      if (depth === 0) {
+        endLine = i;
+        break;
+      }
+    }
+    nodeRanges.push({ id, startLine: openBraceLine, endLine });
+  }
+  return nodeRanges;
+}
+
+export function findNodeIdAtLine(
+  ranges: Array<{ id: string; startLine: number; endLine: number }>,
+  line: number,
+): string | undefined {
+  let best: { id: string; startLine: number; endLine: number } | null = null;
+  for (const r of ranges) {
+    if (line >= r.startLine && line <= r.endLine) {
+      if (!best || r.endLine - r.startLine < best.endLine - best.startLine) {
+        best = r;
+      }
+    }
+  }
+  return best ? best.id : undefined;
 }
