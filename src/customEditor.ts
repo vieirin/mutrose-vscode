@@ -1,6 +1,10 @@
 // src/MeuEditorProvider.ts
 import * as vscode from "vscode";
 
+function useIstarTsEditor(): boolean {
+  return vscode.workspace.getConfiguration("mutrose").get<boolean>("useIstarTs", false);
+}
+
 export class CustomEditorProvider implements vscode.CustomTextEditorProvider {
   public static register(context: vscode.ExtensionContext): vscode.Disposable {
     const provider = new CustomEditorProvider(context);
@@ -16,7 +20,7 @@ export class CustomEditorProvider implements vscode.CustomTextEditorProvider {
     );
   }
 
-  constructor(private readonly context: vscode.ExtensionContext) { }
+  constructor(private readonly context: vscode.ExtensionContext) {}
 
   // Chamado pelo VS Code ao abrir um arquivo associado
   public async resolveCustomTextEditor(
@@ -25,6 +29,7 @@ export class CustomEditorProvider implements vscode.CustomTextEditorProvider {
     _token: vscode.CancellationToken,
   ): Promise<void> {
     let isUpdatingFromWebview = false;
+    const istar = useIstarTsEditor();
 
     webviewPanel.webview.options = {
       enableScripts: true,
@@ -36,10 +41,17 @@ export class CustomEditorProvider implements vscode.CustomTextEditorProvider {
           "dist",
           "webview",
         ),
+        vscode.Uri.joinPath(
+          this.context.extensionUri,
+          "src",
+          "editors",
+          "dist",
+          "istar-webview",
+        ),
       ],
     };
 
-    webviewPanel.webview.html = this.getHtml(webviewPanel.webview);
+    webviewPanel.webview.html = this.getHtml(webviewPanel.webview, istar);
 
     // Utilitário para enviar o conteúdo atual ao React
     const sendDocumentToWebview = () => {
@@ -124,6 +136,15 @@ export class CustomEditorProvider implements vscode.CustomTextEditorProvider {
           sendDocumentToWebview();
           sendDiagnosticsToWebview();
           break;
+        case "select":
+          if (istar && message.payload?.target) {
+            vscode.commands.executeCommand(
+              "goalModel.focusElement",
+              message.payload.target,
+              message.payload.parent,
+            );
+          }
+          break;
       }
     });
   }
@@ -139,14 +160,15 @@ export class CustomEditorProvider implements vscode.CustomTextEditorProvider {
     vscode.workspace.applyEdit(edit);
   }
 
-  private getHtml(webview: vscode.Webview): string {
+  private getHtml(webview: vscode.Webview, istar: boolean): string {
+    const bundle = istar ? "istar-webview" : "webview";
     const scriptUri = webview.asWebviewUri(
       vscode.Uri.joinPath(
         this.context.extensionUri,
         "src",
         "editors",
         "dist",
-        "webview",
+        bundle,
         "main.js",
       ),
     );
@@ -156,7 +178,7 @@ export class CustomEditorProvider implements vscode.CustomTextEditorProvider {
         "src",
         "editors",
         "dist",
-        "webview",
+        bundle,
         "main.css",
       ),
     );
@@ -215,7 +237,8 @@ export function getNodeLineRanges(
   text: string,
 ): Array<{ id: string; startLine: number; endLine: number }> {
   const lines = text.split(/\r?\n/);
-  const nodeRanges: Array<{ id: string; startLine: number; endLine: number }> = [];
+  const nodeRanges: Array<{ id: string; startLine: number; endLine: number }> =
+    [];
 
   const idRegex = /"id"\s*:\s*"([^"]+)"/g;
   let match: RegExpExecArray | null;
