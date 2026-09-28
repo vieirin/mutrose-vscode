@@ -103,11 +103,12 @@ export class CustomEditorProvider implements vscode.CustomTextEditorProvider {
     // Quando o VS Code recarregar o documento (ex: arquivo alterado externamente)
     const changeDocSubscription = vscode.workspace.onDidChangeTextDocument(
       (e) => {
-        if (e.document.uri.toString() === document.uri.toString()) {
-          if (isUpdatingFromWebview) return;
-          sendDocumentToWebview();
-          sendDiagnosticsToWebview();
-        }
+        if (e.document.uri.toString() !== document.uri.toString()) return;
+        // Skip echo while a webview edit is being applied (flag stays true until
+        // applyEdit's promise resolves, which is after this event fires).
+        if (isUpdatingFromWebview) return;
+        sendDocumentToWebview();
+        sendDiagnosticsToWebview();
       },
     );
 
@@ -128,9 +129,14 @@ export class CustomEditorProvider implements vscode.CustomTextEditorProvider {
     webviewPanel.webview.onDidReceiveMessage(async (message) => {
       switch (message.command) {
         case "edit":
+          if (typeof message.content !== "string") break;
+          if (message.content === document.getText()) break;
           isUpdatingFromWebview = true;
-          await this.applyEdit(document, message.content);
-          isUpdatingFromWebview = false;
+          try {
+            await this.applyEdit(document, message.content);
+          } finally {
+            isUpdatingFromWebview = false;
+          }
           break;
         case "ready":
           sendDocumentToWebview();
@@ -150,14 +156,20 @@ export class CustomEditorProvider implements vscode.CustomTextEditorProvider {
   }
 
   // Aplica edição via WorkspaceEdit — isso ativa undo/redo e dirty state automaticamente
-  private applyEdit(document: vscode.TextDocument, newContent: string) {
+  private applyEdit(
+    document: vscode.TextDocument,
+    newContent: string,
+  ): Thenable<boolean> {
     const edit = new vscode.WorkspaceEdit();
     edit.replace(
       document.uri,
-      new vscode.Range(0, 0, document.lineCount, 0),
+      new vscode.Range(
+        document.positionAt(0),
+        document.positionAt(document.getText().length),
+      ),
       newContent,
     );
-    vscode.workspace.applyEdit(edit);
+    return vscode.workspace.applyEdit(edit);
   }
 
   private getHtml(webview: vscode.Webview, istar: boolean): string {

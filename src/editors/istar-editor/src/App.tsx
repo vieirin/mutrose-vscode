@@ -24,18 +24,15 @@ export default function App(): ReactElement {
   const { store } = useIstarStore(createEmptyModel);
   const canvasRef = useRef<IstarCanvasHandle>(null);
   const [issues, setIssues] = useState<ElementIssue[]>([]);
-  const skipNextEdit = useRef(false);
 
   useEffect(() => {
     vscode.postMessage({ command: 'ready' });
   }, []);
 
+  // Persist every model edit (including moveElement on node drag-stop) back to the .gm document.
   useEffect(() => {
     return store.subscribe((event) => {
-      if (event.source === 'load' || skipNextEdit.current) {
-        skipNextEdit.current = false;
-        return;
-      }
+      if (event.source === 'load') return;
       vscode.postMessage({
         command: 'edit',
         content: toPistar(event.model, { saveDate: new Date() }),
@@ -48,7 +45,6 @@ export default function App(): ReactElement {
       const msg = event.data;
       if (msg.command === 'load' && typeof msg.content === 'string') {
         try {
-          skipNextEdit.current = true;
           const text = msg.content.trim();
           store.load(text ? parsePistar(text) : createEmptyModel());
         } catch (err) {
