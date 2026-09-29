@@ -2,14 +2,14 @@
 import * as vscode from "vscode";
 
 function useIstarTsEditor(): boolean {
-  return vscode.workspace.getConfiguration("mutrose").get<boolean>("useIstarTs", false);
+  return vscode.workspace.getConfiguration("mutrose").get<boolean>("useIstarTs", true);
 }
 
 /** With the istar-ts editor: draw it like the legacy React Flow editor. */
 function useReactFlowStyle(): boolean {
   return vscode.workspace
     .getConfiguration("mutrose")
-    .get<boolean>("istarTsReactFlowStyle", false);
+    .get<boolean>("istarTsReactFlowStyle", true);
 }
 
 export class CustomEditorProvider implements vscode.CustomTextEditorProvider {
