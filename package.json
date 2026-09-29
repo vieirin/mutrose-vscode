@@ -283,6 +283,7 @@
     "test": "sh ./scripts/e2e.sh"
   },
   "devDependencies": {
+    "@types/jest": "^30.0.0",
     "@types/mocha": "^9.1.0",
     "@types/node": "^16.18.126",
     "@types/vscode": "^1.96.0",
