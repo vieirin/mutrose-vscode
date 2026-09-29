@@ -9,21 +9,36 @@ import '@istar-ts/react/styles.css';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactElement } from 'react';
 import { mutroseExtension } from './mutroseExtension';
+import type { LspDiagnostic } from './reactFlowStyle';
+import { ReactFlowSidebar, reactFlowStyleExtension } from './reactFlowStyle';
 import vscode from './vscode';
 import './App.css';
 
-interface DiagnosticMessage {
-  message: string;
-  severity: 'error' | 'warning' | 'info';
-  nodeId?: string;
-}
+/** Set by the extension from `mutrose.istarTsReactFlowStyle` (see customEditor.ts). */
+const reactFlowStyle = document.body.dataset.editorStyle === 'reactflow';
 
-const extensions = [mutroseExtension];
+const extensions = reactFlowStyle ? [mutroseExtension, reactFlowStyleExtension] : [mutroseExtension];
+
+/** VS Code marks the webview body with its theme kind; follow it live. */
+function useVsCodeDark(): boolean {
+  const read = () =>
+    document.body.classList.contains('vscode-dark') ||
+    document.body.classList.contains('vscode-high-contrast');
+  const [dark, setDark] = useState(read);
+  useEffect(() => {
+    const observer = new MutationObserver(() => setDark(read()));
+    observer.observe(document.body, { attributes: true, attributeFilter: ['class'] });
+    return () => observer.disconnect();
+  }, []);
+  return dark;
+}
 
 export default function App(): ReactElement {
   const { store } = useIstarStore(createEmptyModel);
   const canvasRef = useRef<IstarCanvasHandle>(null);
   const [issues, setIssues] = useState<ElementIssue[]>([]);
+  const [diagnostics, setDiagnostics] = useState<LspDiagnostic[]>([]);
+  const dark = useVsCodeDark();
 
   useEffect(() => {
     vscode.postMessage({ command: 'ready' });
@@ -51,8 +66,9 @@ export default function App(): ReactElement {
           console.error('Failed to parse goal model', err);
         }
       } else if (msg.command === 'diagnostics' && Array.isArray(msg.diagnostics)) {
+        setDiagnostics(msg.diagnostics as LspDiagnostic[]);
         const next: ElementIssue[] = [];
-        for (const d of msg.diagnostics as DiagnosticMessage[]) {
+        for (const d of msg.diagnostics as LspDiagnostic[]) {
           if (!d.nodeId) continue;
           next.push({
             id: d.nodeId,
@@ -86,6 +102,27 @@ export default function App(): ReactElement {
   }, [store]);
 
   const stableExtensions = useMemo(() => extensions, []);
+
+  if (reactFlowStyle) {
+    return (
+      <div className="app mutrose-rf">
+        <IstarCanvas
+          ref={canvasRef}
+          store={store}
+          extensions={stableExtensions}
+          issues={issues}
+          onSelectionChange={onSelectionChange}
+          palette={false}
+          aside={<ReactFlowSidebar diagnostics={diagnostics} />}
+          colorMode={dark ? 'dark' : 'light'}
+          linkShape="curved"
+          background
+          minimap
+          fitView
+        />
+      </div>
+    );
+  }
 
   return (
     <div className="app">

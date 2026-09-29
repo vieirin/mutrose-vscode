@@ -1,3 +1,4 @@
 {
-    "mutrose.useIstarTs": true
+    "mutrose.useIstarTs": true,
+    "mutrose.istarTsReactFlowStyle": true,
 }

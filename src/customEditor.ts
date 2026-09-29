@@ -5,6 +5,13 @@ function useIstarTsEditor(): boolean {
   return vscode.workspace.getConfiguration("mutrose").get<boolean>("useIstarTs", false);
 }
 
+/** With the istar-ts editor: draw it like the legacy React Flow editor. */
+function useReactFlowStyle(): boolean {
+  return vscode.workspace
+    .getConfiguration("mutrose")
+    .get<boolean>("istarTsReactFlowStyle", false);
+}
+
 export class CustomEditorProvider implements vscode.CustomTextEditorProvider {
   public static register(context: vscode.ExtensionContext): vscode.Disposable {
     const provider = new CustomEditorProvider(context);
@@ -229,7 +236,7 @@ body,
 
   </style>
   </head>
-<body style="padding:0;">
+<body style="padding:0;" data-editor-style="${istar && useReactFlowStyle() ? "reactflow" : "default"}">
   <div id="root"></div>
   <script nonce="${nonce}" src="${scriptUri}"></script>
 </body>
