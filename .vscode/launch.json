@@ -9,7 +9,7 @@
       "name": "Launch Client",
       "runtimeExecutable": "${execPath}",
       "args": [
-        "${workspaceRoot}/src/test/gm",
+        "${workspaceRoot}/src/test",
         "--extensionDevelopmentPath=${workspaceRoot}"
       ],
       "timeout": 30000,
